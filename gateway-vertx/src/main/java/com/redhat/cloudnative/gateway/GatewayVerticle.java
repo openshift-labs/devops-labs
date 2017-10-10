@@ -71,11 +71,21 @@ public class GatewayVerticle extends AbstractVerticle {
                             .setDefaultPort(Integer.getInteger("inventory.api.port", 9001))));
 
             // Cart lookup
-            Single<WebClient> cartDiscoveryRequest = HttpEndpoint.rxGetWebClient(discovery,
-                    rec -> rec.getName().equals("cart"))
-                    .onErrorReturn(t -> WebClient.create(vertx, new WebClientOptions()
-                            .setDefaultHost(System.getProperty("cart.api.host", "localhost"))
-                            .setDefaultPort(Integer.getInteger("cart.api.port", 9002))));
+            Single<WebClient> cartDiscoveryRequest;
+            String cartEndpoint = System.getenv("CART_ENDPOINT_HOST");
+
+            if (cartEndpoint != null) {
+                cartDiscoveryRequest = Single.just(WebClient.create(vertx,
+                        new WebClientOptions()
+                                .setDefaultHost(cartEndpoint)
+                                .setDefaultPort(80)));
+            } else {
+                cartDiscoveryRequest = HttpEndpoint.rxGetWebClient(discovery,
+                        rec -> rec.getName().equals("cart"))
+                        .onErrorReturn(t -> WebClient.create(vertx, new WebClientOptions()
+                                .setDefaultHost(System.getProperty("cart.api.host", "localhost"))
+                                .setDefaultPort(Integer.getInteger("cart.api.port", 9002))));
+            }
 
             // Zip all 3 requests
             Single.zip(catalogDiscoveryRequest, inventoryDiscoveryRequest, cartDiscoveryRequest, (c, i, ct) -> {
