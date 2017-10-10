@@ -83,8 +83,8 @@ objects:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
-          - name: COOLSTORE_GW_ENDPOINT
-            value: http://gw-${HOSTNAME_SUFFIX}
+          - name: COOLSTORE_GW_SERVICE
+            value: gw
           - name: HOSTNAME_HTTP
             value: web-ui:8080
           image: web-ui
@@ -159,7 +159,6 @@ objects:
       application: coolstore
       component: web-ui
   spec:
-    host: web-ui-${HOSTNAME_SUFFIX}
     to:
       kind: Service
       name: web-ui
@@ -234,12 +233,6 @@ objects:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
-          - name: CART_ENDPOINT
-            value: cart-${HOSTNAME_SUFFIX}
-          - name: INVENTORY_ENDPOINT
-            value: inventory-${HOSTNAME_SUFFIX}
-          - name: CATALOG_ENDPOINT
-            value: catalog-${HOSTNAME_SUFFIX}
           image: library/coolstore-gw:latest
           livenessProbe:
             httpGet:
@@ -280,7 +273,7 @@ objects:
       application: coolstore
       component: coolstore-gw
       hystrix.enabled: "true"
-    name: coolstore-gw
+    name: gw
   spec:
     ports:
     - port: 8080
@@ -291,15 +284,14 @@ objects:
 - apiVersion: v1
   kind: Route
   metadata:
-    name: coolstore-gw
+    name: gw
     labels:
       application: coolstore
       component: coolstore-gw
   spec:
-    host: gw-${HOSTNAME_SUFFIX}
     to:
       kind: Service
-      name: coolstore-gw
+      name: gw
 # Catalog Service
 - apiVersion: v1
   kind: ImageStream
@@ -456,7 +448,6 @@ objects:
       component: catalog
     name: catalog
   spec:
-    host: catalog-${HOSTNAME_SUFFIX}
     to:
       kind: Service
       name: catalog
@@ -723,7 +714,6 @@ objects:
       component: cart
     name: cart
   spec:
-    host: cart-${HOSTNAME_SUFFIX}
     to:
       kind: Service
       name: cart
@@ -904,7 +894,6 @@ objects:
       component: inventory
     name: inventory
   spec:
-    host: inventory-${HOSTNAME_SUFFIX}
     to:
       kind: Service
       name: inventory
@@ -1001,7 +990,7 @@ parameters:
   displayName: Git source repository
   name: GIT_URI
   required: true
-  value: https://github.com/siamaksade/devops-labs-coolstore.git
+  value: https://github.com/openshift-roadshow/devops-workshop-labs.git
 - displayName: Git branch/tag reference
   name: GIT_REF
   required: true
@@ -1009,10 +998,6 @@ parameters:
 - description: Maven mirror url. If nexus is deployed locally, use nexus url (e.g. http://nexus.ci:8081/content/groups/public/)
   displayName: Maven mirror url
   name: MAVEN_MIRROR_URL
-- description: Hostname suffix used for routes e.g. cart-<HOSTNAME_SUFFIX> inventory-<HOSTNAME_SUFFIX>
-  displayName: Hostname Suffix
-  name: HOSTNAME_SUFFIX
-  required: true
 - description: Catalog Service database user name
   displayName: Catalog Database Username
   from: user[a-zA-Z0-9]{3}
