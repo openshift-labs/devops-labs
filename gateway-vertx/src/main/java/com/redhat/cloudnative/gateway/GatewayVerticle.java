@@ -72,13 +72,9 @@ public class GatewayVerticle extends AbstractVerticle {
 
             // Cart lookup
             Single<WebClient> cartDiscoveryRequest;
-            String cartEndpoint = System.getenv("CART_ENDPOINT_HOST");
-
-            if (cartEndpoint != null) {
-                cartDiscoveryRequest = Single.just(WebClient.create(vertx,
-                        new WebClientOptions()
-                                .setDefaultHost(cartEndpoint)
-                                .setDefaultPort(80)));
+            if (Boolean.parseBoolean(System.getenv("DISABLE_CART_DISCOVERY"))) {
+                LOG.info("Disable Cart discovery");
+                cartDiscoveryRequest = Single.just(null);
             } else {
                 cartDiscoveryRequest = HttpEndpoint.rxGetWebClient(discovery,
                         rec -> rec.getName().equals("cart"))
@@ -146,6 +142,10 @@ public class GatewayVerticle extends AbstractVerticle {
     private void getCart(RoutingContext rc) {
         String cartId = rc.request().getParam("cartId");
 
+        if (cart == null) {
+            initCartClient(rc);
+        }
+
         circuit.executeWithFallback(
             future -> {
                 cart.get("/api/cart/" + cartId).as(BodyCodec.jsonObject())
@@ -165,6 +165,10 @@ public class GatewayVerticle extends AbstractVerticle {
         String cartId = rc.request().getParam("cartId");
         String itemId = rc.request().getParam("itemId");
         String quantity = rc.request().getParam("quantity");
+
+        if (cart == null) {
+            initCartClient(rc);
+        }
 
         circuit.executeWithFallback(
                 future -> {
@@ -187,6 +191,10 @@ public class GatewayVerticle extends AbstractVerticle {
         String itemId = rc.request().getParam("itemId");
         String quantity = rc.request().getParam("quantity");
 
+        if (cart == null) {
+            initCartClient(rc);
+        }
+
         circuit.executeWithFallback(
                 future -> {
                     cart.delete("/api/cart/" + cartId + "/" + itemId + "/" + quantity)
@@ -201,5 +209,14 @@ public class GatewayVerticle extends AbstractVerticle {
                                 }
                             });
                 }, v -> new JsonObject());
+    }
+
+    private void initCartClient(RoutingContext rc) {
+        String cartRoute = rc.request().host().replaceAll("^gw-(.*)$", "cart-$1");
+        LOG.info("Initiaizing Cart webclient at {}", cartRoute);
+        cart = WebClient.create(vertx,
+                new WebClientOptions()
+                        .setDefaultHost(cartRoute)
+                        .setDefaultPort(80));
     }
 }
