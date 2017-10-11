@@ -1,0 +1,1730 @@
+apiVersion: v1
+kind: Template
+metadata:
+  annotations:
+    description: CoolStore Microservices Application Template with CI/CD Pipeline and Blue/Green Deployment
+    iconClass: icon-java
+    tags: microservice,jboss,spring
+  name: coolstore-bluegreen
+message: "After deployment, run the cart-pipeline twice in order to deploy the Cart Blue and Cart Green pods. Alternatively, you can run the following to deploy them at once, after the Cart image is built: \n\n oc tag cart:latest cart:latest-blue cart:latest-green \n\n Also allocate more resources to Jenkins: \n\n oc set resources dc/jenkins --limits=cpu=1,memory=2Gi --requests=cpu=200m,memory=1Gi"
+objects:
+- apiVersion: v1
+  groupNames: null
+  kind: RoleBinding
+  metadata:
+    name: default_edit
+  roleRef:
+    name: edit
+  subjects:
+  - kind: ServiceAccount
+    name: default
+# UI
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: web-ui
+    labels:
+      application: coolstore
+      component: web-ui
+  spec:
+    tags:
+    - name: latest
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: web-ui
+    labels:
+      app: web-ui
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: web-ui:latest
+    source:
+      contextDir: web-nodejs
+      git:
+        ref: ${GIT_REF}
+        uri: ${GIT_URI}
+      type: Git
+    strategy:
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: nodejs:4
+          namespace: openshift
+      type: Source
+    triggers:
+    - imageChange: {}
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: web-ui
+    labels:
+      application: coolstore
+      component: web-ui
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: web-ui
+    strategy:
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: coolstore
+          component: web-ui
+          deploymentconfig: web-ui
+      spec:
+        containers:
+        - env:
+          - name: KUBERNETES_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: COOLSTORE_GW_SERVICE
+            value: gw
+          - name: HOSTNAME_HTTP
+            value: web-ui:8080
+          image: web-ui
+          imagePullPolicy: Always
+          name: web-ui
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 120
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 50m
+              memory: 256Mi
+          terminationMessagePath: /dev/termination-log
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - web-ui
+        from:
+          kind: ImageStreamTag
+          name: web-ui:latest
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: web-ui
+      application: coolstore
+      component: web-ui
+    name: web-ui
+  spec:
+    ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: web-ui
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: web-ui
+    labels:
+      application: coolstore
+      component: web-ui
+  spec:
+    to:
+      kind: Service
+      name: web-ui
+# Coolstore Gateway
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: coolstore-gw
+    labels:
+      application: coolstore
+      component: coolstore-gw
+  spec:
+    tags:
+    - name: latest
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: coolstore-gw
+    labels:
+      application: coolstore
+      component: coolstore-gw
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: coolstore-gw:latest
+    source:
+      contextDir: gateway-vertx
+      git:
+        ref: ${GIT_REF}
+        uri: ${GIT_URI}
+      type: Git
+    strategy:
+      sourceStrategy:
+        env:
+        - name: MAVEN_MIRROR_URL
+          value: ${MAVEN_MIRROR_URL}
+        from:
+          kind: ImageStreamTag
+          name: redhat-openjdk18-openshift:1.1
+          namespace: openshift
+      type: Source
+    triggers:
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: coolstore-gw
+    labels:
+      application: coolstore
+      component: coolstore-gw
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: coolstore-gw
+    strategy:
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: coolstore
+          component: coolstore-gw
+          deploymentconfig: coolstore-gw
+        name: coolstore-gw
+      spec:
+        containers:
+        - env:
+          - name: KUBERNETES_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          image: library/coolstore-gw:latest
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+          name: coolstore-gw
+          ports:
+          - containerPort: 8778
+            name: jolokia
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+          resources:
+            limits:
+              cpu: 1
+              memory: 2Gi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - coolstore-gw
+        from:
+          kind: ImageStreamTag
+          name: coolstore-gw:latest
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: coolstore-gw
+      application: coolstore
+      component: coolstore-gw
+      hystrix.enabled: "true"
+    name: gw
+  spec:
+    ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: coolstore-gw
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: gw
+    labels:
+      application: coolstore
+      component: coolstore-gw
+  spec:
+    to:
+      kind: Service
+      name: gw
+# Catalog Service
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: catalog
+    labels:
+      application: coolstore
+      component: catalog
+  spec:
+    tags:
+    - name: latest
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: catalog
+    labels:
+      application: coolstore
+      component: catalog
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: catalog:latest
+    source:
+      contextDir: catalog-spring-boot
+      git:
+        ref: ${GIT_REF}
+        uri: ${GIT_URI}
+      type: Git
+    strategy:
+      sourceStrategy:
+        env:
+        - name: MAVEN_MIRROR_URL
+          value: ${MAVEN_MIRROR_URL}
+        from:
+          kind: ImageStreamTag
+          name: redhat-openjdk18-openshift:1.1
+          namespace: openshift
+      type: Source
+    triggers:
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: catalog
+    labels:
+      application: coolstore
+      component: catalog
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: catalog
+    strategy:
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: coolstore
+          component: catalog
+          deploymentconfig: catalog
+        name: catalog
+      spec:
+        containers:
+        - env:
+          - name: JWS_ADMIN_USERNAME
+            value: Skq3VtCd
+          - name: JWS_ADMIN_PASSWORD
+            value: oktt6yhw
+          - name: DB_USERNAME
+            value: ${CATALOG_DB_USERNAME}
+          - name: DB_PASSWORD
+            value: ${CATALOG_DB_PASSWORD}
+          - name: DB_NAME
+            value: catalogdb
+          - name: DB_SERVER
+            value: catalog-mongodb
+          image: catalog
+          imagePullPolicy: Always
+          name: catalog
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: 2
+              memory: 2Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          terminationMessagePath: /dev/termination-log
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        securityContext: {}
+        terminationGracePeriodSeconds: 75
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - catalog
+        from:
+          kind: ImageStreamTag
+          name: catalog:latest
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      service.alpha.openshift.io/dependencies: '[{"name":"catalog-mongodb","namespace":"","kind":"Service"}]'
+    labels:
+      app: catalog
+      application: coolstore
+      component: catalog
+    name: catalog
+  spec:
+    ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: catalog
+- apiVersion: v1
+  kind: Route
+  metadata:
+    labels:
+      application: coolstore
+      component: catalog
+    name: catalog
+  spec:
+    to:
+      kind: Service
+      name: catalog
+      weight: 100
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: catalog
+      application: coolstore
+      component: catalog
+    name: catalog-mongodb
+  spec:
+    ports:
+    - name: mongo
+      port: 27017
+      protocol: TCP
+      targetPort: 27017
+    selector:
+      deploymentconfig: catalog-mongodb
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      application: coolstore
+      component: catalog
+    name: catalog-mongodb
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: catalog-mongodb
+    strategy:
+      recreateParams:
+        timeoutSeconds: 600
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: coolstore
+          component: catalog
+          deploymentconfig: catalog-mongodb
+      spec:
+        containers:
+        - env:
+          - name: KUBERNETES_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MONGODB_USER
+            value: ${CATALOG_DB_USERNAME}
+          - name: MONGODB_PASSWORD
+            value: ${CATALOG_DB_PASSWORD}
+          - name: MONGODB_DATABASE
+            value: catalogdb
+          - name: MONGODB_ADMIN_PASSWORD
+            value: ${CATALOG_DB_PASSWORD}
+          image: mongodb
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 27017
+            timeoutSeconds: 1
+          name: catalog-mongodb
+          ports:
+          - containerPort: 27017
+            protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+              - /bin/sh
+              - -i
+              - -c
+              - mongo 127.0.0.1:27017/$MONGODB_DATABASE -u $MONGODB_USER -p $MONGODB_PASSWORD
+                --eval="quit()"
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            capabilities: {}
+            privileged: false
+          terminationMessagePath: /dev/termination-log
+          volumeMounts:
+          - mountPath: /var/lib/mongodb/data
+            name: mongodb-data
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: mongodb-data
+          emptyDir: {}
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - catalog-mongodb
+        from:
+          kind: ImageStreamTag
+          name: mongodb:3.2
+          namespace: openshift
+      type: ImageChange
+    - type: ConfigChange
+# Cart Service
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: cart
+    labels:
+      application: coolstore
+      component: cart
+  spec:
+    tags:
+    - name: latest
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: cart
+    labels:
+      application: coolstore
+      component: cart
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: cart:latest
+    source:
+      contextDir: cart-spring-boot
+      git:
+        ref: ${GIT_REF}
+        uri: ${GIT_URI}
+      type: Git
+    strategy:
+      sourceStrategy:
+        env:
+        - name: MAVEN_MIRROR_URL
+          value: ${MAVEN_MIRROR_URL}
+        from:
+          kind: ImageStreamTag
+          name: redhat-openjdk18-openshift:1.1
+          namespace: openshift
+      type: Source
+    triggers:
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+# Inventory Service
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: inventory
+    labels:
+      application: coolstore
+      component: inventory
+  spec:
+    tags:
+    - name: latest
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: inventory
+    labels:
+      application: coolstore
+      component: inventory
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: inventory:latest
+    source:
+      contextDir: inventory-wildfly-swarm
+      git:
+        ref: ${GIT_REF}
+        uri: ${GIT_URI}
+      type: Git
+    strategy:
+      sourceStrategy:
+        env:
+        - name: MAVEN_MIRROR_URL
+          value: ${MAVEN_MIRROR_URL}
+        from:
+          kind: ImageStreamTag
+          name: redhat-openjdk18-openshift:1.1
+          namespace: openshift
+      type: Source
+    triggers:
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: inventory
+    labels:
+      application: coolstore
+      component: inventory
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: inventory
+    strategy:
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          deploymentconfig: inventory
+          application: coolstore
+          component: inventory
+        name: inventory
+      spec:
+        containers:
+        - env:
+          - name: OPENSHIFT_KUBE_PING_LABELS
+            value: application=inventory
+          - name: OPENSHIFT_KUBE_PING_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MQ_CLUSTER_PASSWORD
+            value: 7mzX0pLV03
+          - name: JGROUPS_CLUSTER_PASSWORD
+            value: CqUo3fYDTv
+          - name: AUTO_DEPLOY_EXPLODED
+            value: "false"
+          - name: DB_SERVICE_PREFIX_MAPPING
+            value: inventory-postgresql=DB
+          - name: DB_JNDI
+            value: java:jboss/datasources/InventoryDS
+          - name: DB_USERNAME
+            value: ${INVENTORY_DB_USERNAME}
+          - name: DB_PASSWORD
+            value: ${INVENTORY_DB_PASSWORD}
+          - name: DB_DATABASE
+            value: inventorydb
+          image: inventory
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                - /opt/eap/bin/jboss-cli.sh
+                - -c
+                - :shutdown(timeout=60)
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /node
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 120
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          name: inventory
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          - containerPort: 8888
+            name: ping
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /node
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          terminationMessagePath: /dev/termination-log
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        securityContext: {}
+        terminationGracePeriodSeconds: 75
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - inventory
+        from:
+          kind: ImageStreamTag
+          name: inventory:latest
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      service.alpha.openshift.io/dependencies: '[{"name":"inventory-postgresql","namespace":"","kind":"Service"}]'
+    labels:
+      app: inventory
+      application: coolstore
+      component: inventory
+    name: inventory
+  spec:
+    ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: inventory
+- apiVersion: v1
+  kind: Route
+  metadata:
+    labels:
+      application: coolstore
+      component: inventory
+    name: inventory
+  spec:
+    to:
+      kind: Service
+      name: inventory
+      weight: 100
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: inventory-postgresql
+    labels:
+      component: inventory
+      application: coolstore
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: inventory-postgresql
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: coolstore
+          component: inventory
+          deploymentconfig: inventory-postgresql
+        name: inventory-postgresql
+      spec:
+        containers:
+        - env:
+          - name: POSTGRESQL_USER
+            value: ${INVENTORY_DB_USERNAME}
+          - name: POSTGRESQL_PASSWORD
+            value: ${INVENTORY_DB_PASSWORD}
+          - name: POSTGRESQL_DATABASE
+            value: inventorydb
+          image: postgresql
+          imagePullPolicy: Always
+          name: inventory-postgresql
+          ports:
+          - containerPort: 5432
+            protocol: TCP
+          volumeMounts:
+          - mountPath: /var/lib/pgsql/data
+            name: inventory-postgresql-data
+          livenessProbe:
+            initialDelaySeconds: 30
+            tcpSocket:
+              port: 5432
+            timeoutSeconds: 1
+          readinessProbe:
+            exec:
+              command:
+              - /bin/sh
+              - -i
+              - -c
+              - psql -h 127.0.0.1 -U $POSTGRESQL_USER -q -d $POSTGRESQL_DATABASE -c 'SELECT 1'
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        terminationGracePeriodSeconds: 60
+        volumes:
+        - name: inventory-postgresql-data
+          emptyDir: {}
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - inventory-postgresql
+        from:
+          kind: ImageStreamTag
+          name: postgresql:latest
+          namespace: openshift
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      application: coolstore
+      component: inventory
+    name: inventory-postgresql
+  spec:
+    ports:
+    - port: 5432
+      targetPort: 5432
+    selector:
+      deploymentconfig: inventory-postgresql
+# Pipeline
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    annotations:
+      pipeline.alpha.openshift.io/uses: '[{"name": "cart", "namespace": "", "kind": "DeploymentConfig"}]'
+    labels:
+      app: coolstore
+    name: cart-pipeline
+  spec:
+    triggers:
+      - type: GitHub
+        github:
+          secret: secret1
+      - type: Generic
+        generic:
+          secret: secret1
+    runPolicy: Serial
+    source:
+      type: None
+    strategy:
+      jenkinsPipelineStrategy:
+        jenkinsfile: |-
+          node('mvn') {
+            stage('Build') {
+              git url: "https://github.com/siamaksade/cart-service.git"
+              sh "mvn package"
+              stash name:"jar", includes:"target/cart.jar"
+            }
+            stage('Test') {
+              parallel(
+                "Cart Tests": {
+                  sh "mvn verify -P cart-tests"
+                },
+                "Discount Tests": {
+                  sh "mvn verify -P discount-tests"
+                }
+              )
+            }
+            stage('Build Image') {
+              unstash name:"jar"
+              sh "mkdir target/cart-spring-boot && cp target/cart.jar target/cart-spring-boot/cart.jar"
+              sh "oc start-build cart --from-dir=target --follow"
+            }
+
+            def tag = "green"
+            def altTag = "blue"
+
+            stage('Deploy (Not Live)') {
+              sh "oc get route cart -o jsonpath='{ .spec.to.name }' > activeservice"
+              activeService = readFile('activeservice').trim()
+              if (activeService == "cart-blue") {
+                tag = "green"
+                altTag = "blue"
+              }
+              openshiftTag sourceStream: 'cart', sourceTag: 'latest', destinationStream: 'cart', destinationTag: "latest-${tag}"
+              sleep 10
+              openshiftVerifyDeployment deploymentConfig: "cart-${tag}", replicaCount: '1', verifyReplicaCount: true
+              sleep 5
+            }
+            stage('Verify Deployment') {
+              sh "curl -s -X POST http://cart-${tag}:8080/api/cart/666/329299/1"
+              sh "curl -s http://cart-${tag}:8080/api/cart/666 | grep 'Red Fedora'"
+            }
+            stage('Approve Go Live') {
+              timeout(time:15, unit:'MINUTES') {
+                input message:'Go Live?'
+              }
+            }
+            stage('Go Live') {
+              sh "oc set route-backends cart cart-${tag}=100 cart-${altTag}=0"
+            }
+          }
+      type: JenkinsPipeline
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    labels:
+      app: coolstore
+      role: jenkins-slave
+    name: jenkins-slaves
+  data:
+    maven-template: |-
+      <org.csanchez.jenkins.plugins.kubernetes.PodTemplate>
+        <inheritFrom></inheritFrom>
+        <name>mvn</name>
+        <privileged>false</privileged>
+        <alwaysPullImage>false</alwaysPullImage>
+        <instanceCap>2147483647</instanceCap>
+        <idleMinutes>0</idleMinutes>
+        <label>mvn</label>
+        <serviceAccount>jenkins</serviceAccount>
+        <nodeSelector></nodeSelector>
+        <customWorkspaceVolumeEnabled>false</customWorkspaceVolumeEnabled>
+        <workspaceVolume class="org.csanchez.jenkins.plugins.kubernetes.volumes.workspace.EmptyDirWorkspaceVolume">
+          <memory>false</memory>
+        </workspaceVolume>
+        <volumes>
+          <org.csanchez.jenkins.plugins.kubernetes.volumes.PersistentVolumeClaim>
+            <mountPath>/home/jenkins/.m2</mountPath>
+            <claimName>jenkins-maven-slave-pvc</claimName>
+            <readOnly>false</readOnly>
+          </org.csanchez.jenkins.plugins.kubernetes.volumes.PersistentVolumeClaim>
+        </volumes>
+        <containers>
+          <org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate>
+            <name>jnlp</name>
+            <image>registry.access.redhat.com/openshift3/jenkins-slave-maven-rhel7</image>
+            <privileged>false</privileged>
+            <alwaysPullImage>false</alwaysPullImage>
+            <workingDir>/tmp</workingDir>
+            <command></command>
+            <args>${computer.jnlpmac} ${computer.name}</args>
+            <ttyEnabled>false</ttyEnabled>
+            <resourceRequestCpu>200m</resourceRequestCpu>
+            <resourceRequestMemory>1Gi</resourceRequestMemory>
+            <resourceLimitCpu>1</resourceLimitCpu>
+            <resourceLimitMemory>4Gi</resourceLimitMemory>
+            <envVars/>
+          </org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate>
+        </containers>
+        <envVars/>
+        <annotations/>
+        <imagePullSecrets/>
+      </org.csanchez.jenkins.plugins.kubernetes.PodTemplate>
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: jenkins-maven-slave-pvc
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 4Gi
+# Cart Blue
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: coolstore
+      application: coolstore
+      component: cart-blue
+    name: cart-blue
+  spec:
+    ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: cart-blue
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    generation: 1
+    labels:
+      application: coolstore
+      component: cart-blue
+    name: cart-blue
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: cart-blue
+    strategy:
+      activeDeadlineSeconds: 21600
+      recreateParams:
+        timeoutSeconds: 600
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: coolstore
+          component: cart-blue
+          deploymentconfig: cart-blue
+        name: cart-blue
+      spec:
+        containers:
+        - env:
+          - name: CATALOG_ENDPOINT
+            value: http://catalog:8080
+          - name: APPLICATION_MODE
+            value: prod
+          - name: DATAGRID_HOST
+            value: datagrid-hotrod
+          - name: DATAGRID_PORT
+            value: "11333"
+          image: cart
+          imagePullPolicy: Always
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 45
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: cart-blue
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          - containerPort: 8443
+            name: https
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 10
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 45
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              memory: 1Gi
+            requests:
+              memory: 200Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - cart-blue
+        from:
+          kind: ImageStreamTag
+          name: cart:latest-blue
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Route
+  metadata:
+    labels:
+      application: coolstore
+      component: cart-blue
+    name: cart-blue
+  spec:
+    to:
+      kind: Service
+      name: cart-blue
+      weight: 100
+    wildcardPolicy: None
+# Cart Green
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: coolstore
+      application: coolstore
+      component: cart-green
+    name: cart-green
+  spec:
+    ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: cart-green
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    generation: 1
+    labels:
+      application: coolstore
+      component: cart-green
+    name: cart-green
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: cart-green
+    strategy:
+      activeDeadlineSeconds: 21600
+      recreateParams:
+        timeoutSeconds: 600
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: coolstore
+          component: cart-green
+          deploymentconfig: cart-green
+        name: cart-green
+      spec:
+        containers:
+        - env:
+          - name: CATALOG_ENDPOINT
+            value: http://catalog:8080
+          - name: APPLICATION_MODE
+            value: prod
+          - name: DATAGRID_HOST
+            value: datagrid-hotrod
+          - name: DATAGRID_PORT
+            value: "11333"
+          image: cart
+          imagePullPolicy: Always
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 45
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: cart-green
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          - containerPort: 8443
+            name: https
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 10
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 45
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              memory: 1Gi
+            requests:
+              memory: 200Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - cart-green
+        from:
+          kind: ImageStreamTag
+          name: cart:latest-green
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Route
+  metadata:
+    labels:
+      application: coolstore
+      component: cart-green
+    name: cart-green
+  spec:
+    to:
+      kind: Service
+      name: cart-green
+      weight: 100
+    wildcardPolicy: None
+# Cart Route
+- apiVersion: v1
+  kind: Route
+  metadata:
+    annotations:
+      haproxy.router.openshift.io/balance: roundrobin
+    name: cart
+    labels:
+      application: coolstore
+      component: cart
+  spec:
+    alternateBackends:
+      - kind: Service
+        name: cart-green
+        weight: 100
+    to:
+      kind: Service
+      name: cart-blue
+      weight: 0
+    wildcardPolicy: None
+# Gogs
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: The Gogs server's http port
+    labels:
+      app: gogs
+    name: gogs
+  spec:
+    ports:
+    - name: web
+      port: 3000
+      protocol: TCP
+      targetPort: 3000
+    selector:
+      app: gogs
+      deploymentconfig: gogs
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Route
+  metadata:
+    annotations:
+      description: Route for gogs's http service.
+    name: gogs
+    labels:
+      app: gogs
+  spec:
+    to:
+      kind: Service
+      name: gogs
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: gogs
+    labels:
+      app: gogs
+  spec:
+    tags:
+    - annotations:
+        description: The Gogs git server docker image
+        tags: gogs,go,golang
+      from:
+        kind: DockerImage
+        name: openshiftdemos/gogs:0.11.29
+      importPolicy: {}
+      name: "0.11.29"
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      app: gogs
+    name: gogs
+  spec:
+    replicas: 1
+    selector:
+      app: gogs
+      deploymentconfig: gogs
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          app: gogs
+          deploymentconfig: gogs
+      spec:
+        containers:
+        - image: " "
+          imagePullPolicy: Always
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            successThreshold: 1
+            httpGet:
+              port: 3000
+              path: /
+            timeoutSeconds: 1
+          name: gogs
+          ports:
+          - containerPort: 3000
+            protocol: TCP
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 200m
+          terminationMessagePath: /dev/termination-log
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            successThreshold: 1
+            httpGet:
+              port: 3000
+              path: /
+            timeoutSeconds: 1
+          volumeMounts:
+          - name: gogs-data
+            mountPath: /opt/gogs/data
+          - name: gogs-config
+            mountPath: /opt/gogs/custom/conf
+        volumes:
+          - name: gogs-data
+            persistentVolumeClaim:
+              claimName: gogs-data
+          - name: gogs-config
+            configMap:
+              name: gogs
+              items:
+                - key: app.ini
+                  path: app.ini
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+    triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - gogs
+        from:
+          kind: ImageStreamTag
+          name: gogs:0.11.29
+      type: ImageChange
+  status: {}
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: gogs-data
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    name: install-gogs
+    labels:
+      app: gogs
+      job: install-gogs
+  spec:
+    containers:
+    - name: oc
+      image: docker.io/openshiftdemos/oc
+      command: ["/bin/bash",  "/tmp/installgogs.sh"]
+      volumeMounts:
+      - name: gogs-install
+        mountPath: /tmp/
+      resources:
+        request:
+          memory: 256Mi
+      env:
+      - name: KUBERNETES_NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace
+    volumes:
+      - name: gogs-install
+        configMap:
+          name: gogs
+          items:
+          - key: installgogs.sh
+            path: installgogs.sh
+    restartPolicy: Never
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: gogs
+  data:
+    installgogs.sh: |
+      #!/bin/bash
+
+      set -x
+
+      # Use the oc client to get the url for the gogs and jenkins route and service
+      GOGSSVC=$(oc get svc gogs -o template --template='{{.spec.clusterIP}}')
+      GOGSROUTE=$(oc get route gogs -o template --template='{{.spec.host}}')
+      JENKINSSVC=$(oc get svc jenkins -o template --template='{{.spec.clusterIP}}')
+
+      # Use the oc client to get the postgres and jenkins variables into the current shell
+      eval $(oc env dc/jenkins --list | grep -v \#)
+
+      # now we wait for gogs to be ready in the same way
+      x=1
+      oc get ep gogs -o yaml | grep "\- addresses:"
+      while [ ! $? -eq 0 ]
+      do
+        sleep 10
+        x=$(( $x + 1 ))
+
+        if [ $x -gt 100 ]
+        then
+          exit 255
+        fi
+
+        oc get ep gogs -o yaml | grep "\- addresses:"
+      done
+
+      # we might catch the router before it's been updated, so wait just a touch
+      # more
+      sleep 10
+
+      RETURN=$(curl -o /dev/null -vL --post302 -w "%{http_code}" http://$GOGSSVC:3000/install \
+      --form db_type=SQLite3 \
+      --form db_host=127.0.0.1:3306 \
+      --form db_user=root \
+      --form db_passwd= \
+      --form db_name=gogs \
+      --form ssl_mode=disable \
+      --form db_path=/opt/gogs/data/gogs.db \
+      --form "app_name=Gogs: Go Git Service" \
+      --form repo_root_path=/opt/gogs/data/gogs-repositories \
+      --form run_user=gogs \
+      --form domain=localhost \
+      --form ssh_port=22 \
+      --form http_port=3000 \
+      --form app_url=http://${GOGSROUTE}/ \
+      --form log_root_path=/opt/gogs/log \
+      --form admin_name=developer \
+      --form admin_passwd=openshift3 \
+      --form admin_confirm_passwd=openshift3 \
+      --form admin_email=admin@gogs.com)
+
+      if [ $RETURN != "200" ] && [ $RETURN != "302" ]
+      then
+        echo "ERROR: Failed to initialize Gogs"
+        exit 255
+      fi
+
+      sleep 10
+
+      # import github repository
+      cat <<EOF > /tmp/data.json
+      {
+        "clone_addr": "https://github.com/siamaksade/cart-service.git",
+        "uid": 1,
+        "repo_name": "cart-service"
+      }
+      EOF
+
+      RETURN=$(curl -o /dev/null -vL -w "%{http_code}" -H "Content-Type: application/json" \
+      -u developer:openshift3 -X POST http://$GOGSSVC:3000/api/v1/repos/migrate -d @/tmp/data.json)
+
+      if [ $RETURN != "201" ]
+      then
+        echo "ERROR: Failed to import cart-service GitHub repo"
+        exit 255
+      fi
+
+      sleep 5
+
+      # add webhook to Gogs to trigger pipeline on push
+      cat <<EOF > /tmp/data.json
+      {
+        "type": "gogs",
+        "config": {
+          "url": "https://openshift.default.svc.cluster.local/oapi/v1/namespaces/$KUBERNETES_NAMESPACE/buildconfigs/cart-pipeline/webhooks/secret1/generic",
+          "content_type": "json"
+        },
+        "events": [
+          "push"
+        ],
+        "active": true
+      }
+      EOF
+
+      RETURN=$(curl -o /dev/null -vL -w "%{http_code}" -H "Content-Type: application/json" \
+      -u developer:openshift3 -X POST http://$GOGSSVC:3000/api/v1/repos/developer/cart-service/hooks -d @/tmp/data.json)
+
+      if [ $RETURN != "201" ]
+      then
+        echo "ERROR: Failed to set webhook"
+        exit 255
+      fi
+    app.ini: |
+      RUN_MODE = prod
+      RUN_USER = gogs
+
+      [security]
+      INSTALL_LOCK = false
+
+      [webhook]
+      SKIP_TLS_VERIFY = true
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      app: datagrid
+      application: datagrid
+      comp: datagrid
+    name: datagrid
+  spec:
+    replicas: 1
+    selector:
+      deploymentConfig: datagrid
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          application: datagrid
+          deploymentConfig: datagrid
+        name: datagrid
+      spec:
+        containers:
+        - env:
+          - name: USERNAME
+          - name: PASSWORD
+          - name: OPENSHIFT_KUBE_PING_LABELS
+            value: application=datagrid
+          - name: OPENSHIFT_KUBE_PING_NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+          - name: INFINISPAN_CONNECTORS
+            value: hotrod
+          - name: CACHE_NAMES
+            value: cart
+          - name: HOTROD_SERVICE_NAME
+            value: datagrid-hotrod
+          - name: MEMCACHED_CACHE
+            value: default
+          - name: JGROUPS_CLUSTER_PASSWORD
+            value: BlonpvoQ
+          image: jboss-datagrid65-openshift
+          imagePullPolicy: Always
+          livenessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/datagrid/bin/livenessProbe.sh
+            failureThreshold: 3
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: datagrid
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          - containerPort: 8888
+            name: ping
+            protocol: TCP
+          - containerPort: 11222
+            name: hotrod-internal
+            protocol: TCP
+          - containerPort: 11333
+            name: hotrod
+            protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/datagrid/bin/readinessProbe.sh
+            failureThreshold: 3
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - datagrid
+        from:
+          kind: ImageStreamTag
+          name: jboss-datagrid65-openshift:1.4
+          namespace: openshift
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: Route
+  metadata:
+    labels:
+      app: datagrid
+      application: datagrid
+    name: datagrid
+  spec:
+    to:
+      kind: Service
+      name: datagrid
+      weight: 100
+    wildcardPolicy: None
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: datagrid
+      application: datagrid
+    name: datagrid-hotrod
+  spec:
+    ports:
+    - port: 11333
+      protocol: TCP
+      targetPort: 11333
+    selector:
+      deploymentConfig: datagrid
+    sessionAffinity: None
+    type: ClusterIP
+parameters:
+- description: Git source URI for application
+  displayName: Git source repository
+  name: GIT_URI
+  required: true
+  value: https://github.com/openshift-roadshow/devops-workshop-labs.git
+- displayName: Git branch/tag reference
+  name: GIT_REF
+  required: true
+  value: master
+- description: Maven mirror url. If nexus is deployed locally, use nexus url (e.g. http://nexus.ci:8081/content/groups/public/)
+  displayName: Maven mirror url
+  name: MAVEN_MIRROR_URL
+- description: Catalog Service database user name
+  displayName: Catalog Database Username
+  from: user[a-zA-Z0-9]{3}
+  generate: expression
+  name: CATALOG_DB_USERNAME
+  required: true
+- description: Catalog Service database user password
+  displayName: Catalog Database Password
+  from: '[a-zA-Z0-9]{8}'
+  generate: expression
+  name: CATALOG_DB_PASSWORD
+  required: true
+- description: Inventory Service database user name
+  displayName: Inventory Database Username
+  from: user[a-zA-Z0-9]{3}
+  generate: expression
+  name: INVENTORY_DB_USERNAME
+  required: true
+- description: Inventory Service database user password
+  displayName: Inventory Database Password
+  from: '[a-zA-Z0-9]{8}'
+  generate: expression
+  name: INVENTORY_DB_PASSWORD
+  required: true
