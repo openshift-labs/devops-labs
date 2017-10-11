@@ -931,8 +931,8 @@ objects:
               sh "oc start-build cart --from-dir=target --follow"
             }
 
-            def tag = "green"
-            def altTag = "blue"
+            def tag = "blue"
+            def altTag = "green"
 
             stage('Deploy (Not Live)') {
               sh "oc get route cart -o jsonpath='{ .spec.to.name }' > activeservice"
