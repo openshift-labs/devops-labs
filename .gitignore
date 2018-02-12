@@ -25,3 +25,9 @@ target/
 *.iml
 tmp/
 .idea/
+.gradle/
+.settings/
+bin/
+
+.classpath
+.project

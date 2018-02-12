@@ -5,6 +5,7 @@ jdk:
 
 before_install:
   - nvm install 4.4
+  - cp .travis.settings.xml $HOME/.m2/settings.xml
 
 env:
   - BUILD_CMD="mvn -f cart-spring-boot package"
