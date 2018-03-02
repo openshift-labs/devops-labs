@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: BuildConfig
+metadata:
+  annotations:
+    pipeline.alpha.openshift.io/uses: '[{"name": "cart", "namespace": "", "kind": "DeploymentConfig"}]'
+  name: cart-pipeline
+spec:
+  strategy:
+    jenkinsPipelineStrategy:
+      jenkinsfile: |-
+        node('maven') {
+          stage('Build') {
+            openshiftBuild(buildConfig: 'cart', showBuildLogs: 'true')
+          }
+          stage('Deploy') {
+            openshiftDeploy(deploymentConfig: 'cart')
+            openshiftVerifyDeployment(deploymentConfig: "cart", replicaCount: 1, verifyReplicaCount: true)
+          }
+          stage('Test') {
+            sh "curl -s -X POST http://cart.dev.svc.cluster.local:8080/api/cart/dummy/666/1"
+            sh "curl -s http://cart.dev.svc.cluster.local:8080/api/cart/dummy | grep 'Dummy Product'"
+          }
+        }
+    type: JenkinsPipeline
