@@ -1,35 +1,63 @@
-node('maven') {
-  stage('Build App') {
-    git url: "http://gogs.lab-infra.svc.cluster.local:3000/developer/cart-service.git"
-    sh "mvn clean package -s src/main/config/settings.xml"
+pipeline {
+  agent {
+    label 'maven'
   }
-  stage('Integration Test') {
-    sh "mvn verify -s src/main/config/settings.xml"
-  }
-  stage('Build Image') {
-    sh "oc start-build cart --from-file=target/cart.jar --follow"
-  }
-  stage('Deploy') {
-    openshiftDeploy depCfg: 'cart'
-    openshiftVerifyDeployment depCfg: 'cart', replicaCount: 1, verifyReplicaCount: true
-  }
-  stage('Component Test') {
-    sh "curl -s -X POST http://cart.dev.svc.cluster.local:8080/api/cart/dummy/666/1"
-    sh "curl -s http://cart.dev.svc.cluster.local:8080/api/cart/dummy | grep 'Dummy Product'"
-  }
-  stage('Approve') {
-    timeout(time:15, unit:'MINUTES') {
-      input message:'Approve Deploy to Prod?'
+  stages {
+    stage('Build App') {
+      steps {
+        sh "mvn clean package -s src/main/config/settings.xml"
+      }
+    }
+    stage('Integration Test') {
+      steps {
+        sh "mvn verify -s src/main/config/settings.xml"
+      }
+    }
+    stage('Build Image') {
+      steps {
+        script {
+          openshift.withCluster() {
+            openshift.withProject() {
+              openshift.startBuild("cart", "--from-file=target/cart.jar", "--follow")
+            }
+          }
+        }
+      }
+    }
+    stage('Deploy') {
+      steps {
+        script {
+          openshift.withCluster() {
+            openshift.withProject() {
+              dc = openshift.selector("dc", "cart")
+              dc.rollout().latest()
+              timeout(10) {
+                  dc.rollout().status("-w")
+              }
+            }
+          }
+        }
+      }
+    }
+    stage('Component Test') {
+      steps {
+        script {
+          sh "curl -s -X POST http://cart:8080/api/cart/dummy/666/1"
+          sh "curl -s http://cart:8080/api/cart/dummy | grep 'Dummy Product'"
+        }
+      }
+    }
+    stage('Promote to Prod') {
+      steps {
+        timeout(time:15, unit:'MINUTES') {
+            input message: "Approve Promotion to Prod?", ok: "Promote"
+        }
+        script {
+          openshift.withCluster() {
+            openshift.tag("dev-XX/cart:latest", "prod-XX/cart:prod")
+          }
+        }
+      }
     }
   }
-  stage('Promote') {
-    openshiftTag srcStream: 'cart', srcTag: 'latest', namespace: 'dev', destStream: 'cart', destTag: 'prod', destinationNamespace: 'prod'
-    sleep 10
-    openshiftVerifyDeployment depCfg: 'cart', replicaCount: 1, verifyReplicaCount: true, namespace: 'prod'
-  }
-
-  stage('End-To-End Test') {
-    sh "curl -s -X POST http://cart.prod.svc.cluster.local:8080/api/cart/dummy/444434/1"
-    sh "curl -s http://cart.prod.svc.cluster.local:8080/api/cart/dummy | grep 'Pebble Smart Watch'"
-  }
-}
+}   

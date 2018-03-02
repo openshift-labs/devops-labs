@@ -101,7 +101,7 @@ function import_imagestreams() {
 function build_images() {
   wait_while_empty "Nexus" 600 "oc get ep nexus -o yaml -n lab-infra | grep '\- addresses:'"
 
-  oc process -f https://raw.githubusercontent.com/jbossdemocentral/coolstore-microservice/stable-ocp-3.5/openshift/templates/coolstore-builds-template.yaml \
+  oc process -f https://raw.githubusercontent.com/jbossdemocentral/coolstore-microservice/stable-ocp-3.7/openshift/templates/coolstore-builds-template.yaml \
       --param=MAVEN_MIRROR_URL=http://nexus.lab-infra.svc.cluster.local:8081/content/groups/public/ \
       -n lab-infra | oc create -f - -n openshift --as=system:admin
   sleep 10
@@ -119,7 +119,7 @@ function build_images() {
   oc tag openshift/catalog:latest openshift/coolstore-catalog:prod --as=system:admin
   oc tag openshift/coolstore-gw:latest openshift/coolstore-gateway:prod --as=system:admin
 
-  oc create -f https://raw.githubusercontent.com/openshift-labs/devops-labs/ocp-3.5/lab-6/coolstore-template.yaml -n openshift --as=system:admin
+  oc create -f https://raw.githubusercontent.com/openshift-labs/devops-labs/ocp-3.7/lab-6/coolstore-template.yaml -n openshift --as=system:admin
 }
 
 function set_project_permissions() {
