@@ -5,7 +5,7 @@ metadata:
     description: CoolStore Microservices Application Template
     iconClass: icon-java
     tags: microservice,jboss,spring
-  name: coolstore
+  name: coolstore-deployments
 objects:
 - apiVersion: v1
   groupNames: null
