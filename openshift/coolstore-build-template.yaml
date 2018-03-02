@@ -3,8 +3,9 @@ kind: Template
 metadata:
   annotations:
     description: CoolStore Microservices Application Template
-    iconClass: icon-java
+    iconClass: icon-openjdk
     tags: microservice,jboss,spring
+    "openshift.io/display-name": "CoolStore Builds"
   name: coolstore-builds
 objects:
 - apiVersion: v1
