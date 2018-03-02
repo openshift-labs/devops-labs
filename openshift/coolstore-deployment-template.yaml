@@ -24,7 +24,7 @@ objects:
   metadata:
     name: web-ui
     labels:
-      app: coolstore
+      app: web-ui
       component: web-ui
   spec:
     replicas: 1
