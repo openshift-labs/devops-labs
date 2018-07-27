@@ -6,7 +6,7 @@
   <mirrors>
     <mirror>
       <id>nexus.default</id>
-      <url>http://nexus.lab-infra.svc.cluster.local:8081/content/groups/public/</url>
+      <url>http://nexus.lab-infra.svc.cluster.local:8081/repository/maven-all-public</url>
       <mirrorOf>external:*</mirrorOf>
     </mirror>
   </mirrors>

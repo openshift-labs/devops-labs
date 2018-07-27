@@ -13,7 +13,7 @@ jar {
 repositories {
 	mavenLocal()
 	maven { 
-		url "http://nexus.lab-infra.svc.cluster.local:8081/content/groups/public/" 
+		url "http://nexus.lab-infra.svc.cluster.local:8081/repository/maven-all-public" 
 	}
 	mavenCentral()
 }

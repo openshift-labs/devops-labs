@@ -11,7 +11,7 @@ oc new-project prod --display-name="Coolstore Prod"
 # Deploy Dev
 oc process -f https://raw.githubusercontent.com/openshift-labs/devops-labs/ocp-3.5/lab-3/cart-template.yaml \
     --param=GIT_URI=$CART_REPO \
-    --param=MAVEN_MIRROR_URL=http://nexus.lab-infra.svc.cluster.local:8081/content/groups/public/ \
+    --param=MAVEN_MIRROR_URL=http://nexus.lab-infra.svc.cluster.local:8081/repository/maven-all-public \
     | oc create -f - -n dev
 
 # Deploy Prod

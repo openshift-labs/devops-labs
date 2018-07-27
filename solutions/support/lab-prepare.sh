@@ -102,7 +102,7 @@ function build_images() {
   wait_while_empty "Nexus" 600 "oc get ep nexus -o yaml -n lab-infra | grep '\- addresses:'"
 
   oc process -f https://raw.githubusercontent.com/jbossdemocentral/coolstore-microservice/stable-ocp-3.7/openshift/templates/coolstore-builds-template.yaml \
-      --param=MAVEN_MIRROR_URL=http://nexus.lab-infra.svc.cluster.local:8081/content/groups/public/ \
+      --param=MAVEN_MIRROR_URL=http://nexus.lab-infra.svc.cluster.local:8081/repository/maven-all-public \
       -n lab-infra | oc create -f - -n openshift --as=system:admin
   sleep 10
 

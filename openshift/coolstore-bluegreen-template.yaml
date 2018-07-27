@@ -1690,7 +1690,7 @@ parameters:
   name: GIT_REF
   required: true
   value: master
-- description: Maven mirror url. If nexus is deployed locally, use nexus url (e.g. http://nexus.ci:8081/content/groups/public/)
+- description: Maven mirror url. If nexus is deployed locally, use nexus url (e.g. http://nexus.ci:8081/repository/maven-all-public)
   displayName: Maven mirror url
   name: MAVEN_MIRROR_URL
 - displayName: Gogs username

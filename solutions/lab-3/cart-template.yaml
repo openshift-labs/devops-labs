@@ -164,6 +164,6 @@ parameters:
 - description: Sub-directory in the Git repo for cart service
   displayName: Git context dir
   name: GIT_CONTEXT_DIR
-- description: Maven mirror url. If nexus is deployed locally, use nexus url (e.g. http://nexus.ci:8081/content/groups/public/)
+- description: Maven mirror url. If nexus is deployed locally, use nexus url (e.g. http://nexus.ci:8081/repository/maven-all-public)
   displayName: Maven mirror url
   name: MAVEN_MIRROR_URL
