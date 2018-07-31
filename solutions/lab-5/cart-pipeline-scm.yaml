@@ -11,6 +11,9 @@ spec:
     type: Git
   strategy:
     type: JenkinsPipeline
+    env:
+      - name: NEXUS_URL
+        value: "http://nexus.lab-infra.svc:8081"
     jenkinsPipelineStrategy: {}
   triggers:
   - generic:

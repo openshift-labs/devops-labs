@@ -8,16 +8,6 @@ metadata:
     "openshift.io/display-name": "CoolStore Builds"
   name: coolstore-builds
 objects:
-- apiVersion: v1
-  groupNames: null
-  kind: RoleBinding
-  metadata:
-    name: default_edit
-  roleRef:
-    name: view
-  subjects:
-  - kind: ServiceAccount
-    name: default
 # UI
 - apiVersion: v1
   kind: ImageStream

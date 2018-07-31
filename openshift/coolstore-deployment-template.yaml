@@ -13,11 +13,28 @@ objects:
   kind: RoleBinding
   metadata:
     name: default_edit
+    labels:
+      app: coolstore
   roleRef:
     name: view
   subjects:
   - kind: ServiceAccount
     name: default
+##### IMAGESTREAMS
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: cart
+    labels:
+      app: coolstore
+      component: cart
+  spec:
+    tags:
+    - name: ${APP_VERSION}
+      from:
+        kind: ImageStreamTag
+        name: cart:${APP_VERSION}
+        namespace: openshift
 # UI
 - apiVersion: v1
   kind: DeploymentConfig
@@ -96,6 +113,7 @@ objects:
         from:
           kind: ImageStreamTag
           name: web-ui:${APP_VERSION}
+          namespace: openshift
       type: ImageChange
     - type: ConfigChange
 - apiVersion: v1
@@ -185,6 +203,7 @@ objects:
         from:
           kind: ImageStreamTag
           name: coolstore-gw:${APP_VERSION}
+          namespace: openshift
       type: ImageChange
     - type: ConfigChange
 - apiVersion: v1
@@ -299,6 +318,7 @@ objects:
         from:
           kind: ImageStreamTag
           name: catalog:${APP_VERSION}
+          namespace: openshift
       type: ImageChange
     - type: ConfigChange
 - apiVersion: v1
@@ -675,6 +695,7 @@ objects:
         from:
           kind: ImageStreamTag
           name: inventory:${APP_VERSION}
+          namespace: openshift
       type: ImageChange
     - type: ConfigChange
 - apiVersion: v1
