@@ -1,4 +1,4 @@
-# DevOps Workshop Labs [![Build Status](https://travis-ci.org/openshift-labs/devops-labs.svg?branch=ocp-3.9)](https://travis-ci.org/openshift-labs/devops-labs)
+# DevOps Workshop Labs [![Build Status](https://travis-ci.org/openshift-labs/devops-labs.svg?branch=ocp-3.10)](https://travis-ci.org/openshift-labs/devops-labs)
 
 CoolStore is an online store web application built using Spring Boot, WildFly Swarm, Eclipse Vert.x, 
 Node.js and AngularJS adopting the microservices architecture.
