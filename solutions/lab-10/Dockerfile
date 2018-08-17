@@ -2,7 +2,7 @@ FROM registry.access.redhat.com/openshift3/jenkins-slave-maven-rhel7
 
 MAINTAINER Siamak Sadeghianfar <ssadeghi@redhat.com>
 
-ENV GRADLE_VERSION=3.6
+ENV GRADLE_VERSION=4.9
 
 USER root
 
