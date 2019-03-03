@@ -1,0 +1,27 @@
+pipeline {
+  agent {
+    label 'maven'
+  }
+  stages {
+    stage('Checkout App Source') {
+        git url: 'https://github.com/kseremet/devops-labs.git'
+    }
+    stage('Build App') {
+      steps {
+        sh "cd cart-spring-boot"
+        sh "mvn clean package -s src/main/config/settings.xml"
+      }
+    }
+    stage('Build Image') {
+      steps {
+        script {
+          openshift.withCluster() {
+            openshift.withProject() {
+              openshift.startBuild("cart", "--from-file=target/cart.jar").logs("-f")
+            }
+          }
+        }
+      }
+    }
+  }
+}
